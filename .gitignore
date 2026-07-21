@@ -1,0 +1,21 @@
+# Node modules
+node_modules/
+
+# Python environments
+venv/
+env/
+__pycache__/
+*.pyc
+
+# IDEs
+.vscode/
+.idea/
+
+# Environment variables
+.env
+
+# Build files
+dist/
+build/
+*.pdf
+!backend/Model/*.pdf
