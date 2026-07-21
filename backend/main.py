@@ -45,8 +45,9 @@ class TechRequestForm(BaseModel):
 @app.post("/api/generate-tech-request")
 async def generate_pdf(form_data: TechRequestForm):
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    # Vercel gives read-only filesystem except /tmp
-    output_filename = f"Generated_Tech_Request_{form_data.applicationNumber or 'Draft'}.pdf"
+    
+    first_name = form_data.applicantName.split()[0] if form_data.applicantName.strip() else "Unknown"
+    output_filename = f"TRF {first_name}.pdf"
     
     # We must write to /tmp on Vercel
     if os.environ.get("VERCEL"):

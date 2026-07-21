@@ -53,7 +53,10 @@ function App() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `Tech_Request_${formData.applicationNumber || 'Draft'}.pdf`);
+      
+      const firstName = formData.applicantName ? formData.applicantName.trim().split(' ')[0] : 'Unknown';
+      link.setAttribute('download', `TRF ${firstName}.pdf`);
+      
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
