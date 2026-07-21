@@ -80,9 +80,19 @@ async def generate_pdf(form_data: TechRequestForm):
         ]))
         elements.append(t_title)
         
+        # Format Date
+        formatted_date = form_data.dateOfRequest
+        if formatted_date and "-" in formatted_date:
+            try:
+                from datetime import datetime
+                date_obj = datetime.strptime(formatted_date, "%Y-%m-%d")
+                formatted_date = date_obj.strftime("%d-%m-%Y")
+            except ValueError:
+                pass
+                
         # 2. General Info Table
         data_general = [
-            [B("Date of Request"), ": " + form_data.dateOfRequest],
+            [B("Date of Request"), ": " + formatted_date],
             [B("Application Number"), ": " + form_data.applicationNumber],
             [B("Name of the Applicant"), ": " + form_data.applicantName],
         ]
