@@ -74,7 +74,7 @@ function App() {
     <div className="app-layout">
       {/* Sidebar Navigation */}
       <aside className="sidebar">
-        <h2>Ledgerly Forms</h2>
+        <h2>Dura Forms</h2>
         <ul className="nav-list">
           <li className="nav-item active">Technical Request</li>
           <li className="nav-item">Other Forms...</li>
