@@ -18,4 +18,4 @@ __pycache__/
 dist/
 build/
 *.pdf
-!backend/Model/*.pdf
+backend/Model/
