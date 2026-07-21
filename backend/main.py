@@ -2,12 +2,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-import fitz  # PyMuPDF
 import os
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
 
 app = FastAPI()
 
-# Allow CORS for the React frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -39,65 +42,151 @@ class TechRequestForm(BaseModel):
     contactPersonNumber: str = ""
     bcmName: str = ""
 
-# Map fields to approximate (x, y) coordinates on an A4 page (595 x 842 points)
-# Note: These coordinates are estimates based on standard form layout.
-# You may need to tweak these x, y values to align perfectly with your PDF.
-FIELD_COORDINATES = {
-    "dateOfRequest": (200, 100),
-    "applicationNumber": (200, 115),
-    "applicantName": (200, 130),
-    "applicantAddress": (50, 160),
-    "caseType": (200, 270),
-    "apfNumber": (200, 310),
-    "techVisitNumber": (200, 340),
-    "propertyAddressPlan": (50, 370),
-    "propertyAddressPostal": (50, 480),
-    "boundaryNorth": (100, 620),
-    "boundarySouth": (300, 620),
-    "boundaryEast": (100, 640),
-    "boundaryWest": (300, 640),
-    "flatUdsLandExtend": (150, 690),
-    "flatSuperBuildUpArea": (450, 690),
-    "buildingLandExtend": (150, 710),
-    "buildingBuildUpArea": (450, 710),
-    "landExtend": (150, 730),
-    "contactPersonName": (150, 770),
-    "contactPersonNumber": (150, 790),
-    "bcmName": (50, 830),
-}
-
 @app.post("/api/generate-tech-request")
 async def generate_pdf(form_data: TechRequestForm):
-    # Determine absolute path relative to this script so it works on deployment
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    template_path = os.path.join(base_dir, "Model", "Tech Request Format.pdf")
-    
-    # In deployment (like Render) or local, we can save the generated file to a temporary location
+    # Vercel gives read-only filesystem except /tmp
     output_filename = f"Generated_Tech_Request_{form_data.applicationNumber or 'Draft'}.pdf"
-    output_path = os.path.join(base_dir, output_filename)
     
-    if not os.path.exists(template_path):
-        raise HTTPException(status_code=404, detail=f"PDF Template not found at {template_path}")
-
+    # We must write to /tmp on Vercel
+    if os.environ.get("VERCEL"):
+        output_path = os.path.join("/tmp", output_filename)
+    else:
+        output_path = os.path.join(base_dir, output_filename)
+    
     try:
-        # Open the PDF template
-        doc = fitz.open(template_path)
-        page = doc[0] # Assuming it's a 1-page form
+        doc = SimpleDocTemplate(output_path, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+        elements = []
+        styles = getSampleStyleSheet()
         
-        # Insert text for each field based on coordinates
-        data_dict = form_data.model_dump()
-        for field_name, value in data_dict.items():
-            if value and field_name in FIELD_COORDINATES:
-                x, y = FIELD_COORDINATES[field_name]
-                # If text is long (like address), we could use insert_textbox, but for simplicity insert_text is used.
-                if field_name in ["applicantAddress", "propertyAddressPlan", "propertyAddressPostal"]:
-                    page.insert_textbox(fitz.Rect(x, y, 550, y+80), str(value), fontsize=10, fontname="helv")
-                else:
-                    page.insert_text((x, y), str(value), fontsize=10, fontname="helv")
+        # Styles
+        title_style = ParagraphStyle(name='TitleStyle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=14, alignment=1, spaceAfter=10)
+        normal_bold = ParagraphStyle(name='NormalBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10)
+        normal_style = ParagraphStyle(name='NormalStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=10)
         
-        # Save the populated PDF
-        doc.save(output_path)
-        doc.close()
+        def P(text, style=normal_style):
+            return Paragraph(text, style)
+            
+        def B(text):
+            return Paragraph(text, normal_bold)
+
+        # 1. Title Table
+        t_title = Table([[Paragraph("Technical Request", title_style)]], colWidths=[535])
+        t_title.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('BOX', (0,0), (-1,-1), 1, colors.black),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+        ]))
+        elements.append(t_title)
+        
+        # 2. General Info Table
+        data_general = [
+            [B("Date of Request"), ": " + form_data.dateOfRequest],
+            [B("Application Number"), ": " + form_data.applicationNumber],
+            [B("Name of the Applicant"), ": " + form_data.applicantName],
+        ]
+        t_gen = Table(data_general, colWidths=[150, 385])
+        t_gen.setStyle(TableStyle([
+            ('BOX', (0,0), (-1,-1), 1, colors.black),
+            ('INNERGRID', (0,0), (-1,-1), 1, colors.black),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        elements.append(t_gen)
+        
+        # 3. Applicant Address
+        t_addr = Table([[B("Applicant Address with contact number :"), P(form_data.applicantAddress)]], colWidths=[200, 335])
+        t_addr.setStyle(TableStyle([
+            ('BOX', (0,0), (-1,-1), 1, colors.black),
+            ('INNERGRID', (0,0), (-1,-1), 1, colors.black),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 30),
+        ]))
+        elements.append(t_addr)
+
+        # 4. Case Type & APF
+        data_case = [
+            [B(f"Case Type : {form_data.caseType}")],
+            [B(f"If Builder case / Individual tech, Provide APF Number : {form_data.apfNumber}")],
+            [B(f"Tech Visit Number : {form_data.techVisitNumber}")]
+        ]
+        t_case = Table(data_case, colWidths=[535])
+        t_case.setStyle(TableStyle([
+            ('BOX', (0,0), (-1,-1), 1, colors.black),
+            ('INNERGRID', (0,0), (-1,-1), 1, colors.black),
+        ]))
+        elements.append(t_case)
+
+        # 5. Property Addresses
+        t_prop1 = Table([[B("Address of the property as per Plan / Document"), P(form_data.propertyAddressPlan)]], colWidths=[235, 300])
+        t_prop1.setStyle(TableStyle([('BOX', (0,0), (-1,-1), 1, colors.black), ('INNERGRID', (0,0), (-1,-1), 1, colors.black), ('VALIGN', (0,0), (-1,-1), 'TOP'), ('BOTTOMPADDING', (0,0), (-1,-1), 30)]))
+        elements.append(t_prop1)
+        
+        t_prop2 = Table([[B("Postal Address of the property with pin code"), P(form_data.propertyAddressPostal)]], colWidths=[235, 300])
+        t_prop2.setStyle(TableStyle([('BOX', (0,0), (-1,-1), 1, colors.black), ('INNERGRID', (0,0), (-1,-1), 1, colors.black), ('VALIGN', (0,0), (-1,-1), 'TOP'), ('BOTTOMPADDING', (0,0), (-1,-1), 30)]))
+        elements.append(t_prop2)
+
+        # 6. Boundaries Header
+        t_bound_h = Table([[B("Boundaries")]], colWidths=[535])
+        t_bound_h.setStyle(TableStyle([('BOX', (0,0), (-1,-1), 1, colors.black)]))
+        elements.append(t_bound_h)
+        
+        # Boundaries data
+        data_bound = [
+            [B("North:"), P(form_data.boundaryNorth), B("South:"), P(form_data.boundarySouth)],
+            [B("East:"), P(form_data.boundaryEast), B("West:"), P(form_data.boundaryWest)],
+        ]
+        t_bound = Table(data_bound, colWidths=[50, 217.5, 50, 217.5])
+        t_bound.setStyle(TableStyle([
+            ('BOX', (0,0), (-1,-1), 1, colors.black),
+            ('INNERGRID', (0,0), (-1,-1), 1, colors.black),
+        ]))
+        elements.append(t_bound)
+
+        # 7. Area Header
+        t_area_h = Table([[B("Area of the property in Sq.Ft")]], colWidths=[535])
+        t_area_h.setStyle(TableStyle([('BOX', (0,0), (-1,-1), 1, colors.black)]))
+        elements.append(t_area_h)
+        
+        # Area data
+        data_area = [
+            [B("Flat"), ": UDS Land Extend :", P(form_data.flatUdsLandExtend), B("Super Build up area :"), P(form_data.flatSuperBuildUpArea)],
+            [B("Building"), ": Land Extend :", P(form_data.buildingLandExtend), B("Build up area :"), P(form_data.buildingBuildUpArea)],
+            [B("Land"), ": Land Extend :", P(form_data.landExtend), "", ""],
+        ]
+        t_area = Table(data_area, colWidths=[60, 110, 100, 120, 145])
+        t_area.setStyle(TableStyle([
+            ('BOX', (0,0), (-1,-1), 1, colors.black),
+            ('INNERGRID', (0,0), (-1,-1), 1, colors.black),
+        ]))
+        elements.append(t_area)
+
+        # 8. Contact Details Header
+        t_cont_h = Table([[B("Contact person details at site")]], colWidths=[535])
+        t_cont_h.setStyle(TableStyle([('BOX', (0,0), (-1,-1), 1, colors.black)]))
+        elements.append(t_cont_h)
+        
+        data_cont = [
+            [B("Name:"), P(form_data.contactPersonName), B("Contact number:"), P(form_data.contactPersonNumber)]
+        ]
+        t_cont = Table(data_cont, colWidths=[50, 217.5, 90, 177.5])
+        t_cont.setStyle(TableStyle([
+            ('BOX', (0,0), (-1,-1), 1, colors.black),
+            ('INNERGRID', (0,0), (-1,-1), 1, colors.black),
+        ]))
+        elements.append(t_cont)
+
+        # 9. Signature
+        t_sig = Table([[B("Signature of the BCM :"), P(form_data.bcmName)]], colWidths=[150, 385])
+        t_sig.setStyle(TableStyle([
+            ('BOX', (0,0), (-1,-1), 1, colors.black),
+            ('INNERGRID', (0,0), (-1,-1), 1, colors.black),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 30),
+            ('TOPPADDING', (0,0), (-1,-1), 10),
+        ]))
+        elements.append(t_sig)
+
+        # Build PDF
+        doc.build(elements)
         
         # Return the generated file
         return FileResponse(output_path, filename=output_filename, media_type="application/pdf")
