@@ -27,6 +27,7 @@ function App() {
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mailText, setMailText] = useState(null);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -61,6 +62,17 @@ function App() {
       link.click();
       link.parentNode.removeChild(link);
       
+      const emailContent = `Subject - Request to initiate Property assessment (${formData.applicantName || ''})
+
+Kindly initiate Legal and Technical for mentioned case, all documents uploaded on ilens
+
+Name - ${formData.applicantName || ''}
+App No - ${formData.applicationNumber || ''}
+Product - ${formData.caseType || ''}
+Contact Person - ${formData.contactPersonName || ''}
+Mobile - ${formData.contactPersonNumber || ''}`;
+      
+      setMailText(emailContent);
       alert('PDF generated and downloaded successfully!');
     } catch (error) {
       console.error('Error submitting form:', error);
@@ -232,6 +244,29 @@ function App() {
             <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
               {isSubmitting ? 'Generating PDF...' : 'Generate Form'}
             </button>
+            
+            {mailText && (
+              <div className="mail-container" style={{ marginTop: '2rem', padding: '1.5rem', backgroundColor: 'rgba(255, 255, 255, 0.5)', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.3)' }}>
+                <h3 style={{ marginBottom: '1rem', color: '#1f2937' }}>Email Format</h3>
+                <p style={{ marginBottom: '1rem', color: '#4b5563', fontSize: '0.9rem' }}>Copy and paste this into your email client.</p>
+                <textarea 
+                  readOnly 
+                  value={mailText}
+                  style={{ width: '100%', height: '180px', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontFamily: 'inherit', resize: 'vertical', backgroundColor: 'rgba(255, 255, 255, 0.8)' }}
+                />
+                <button 
+                  type="button" 
+                  className="btn" 
+                  style={{ marginTop: '1rem', backgroundColor: '#4f46e5', color: 'white' }}
+                  onClick={() => {
+                    navigator.clipboard.writeText(mailText);
+                    alert('Email template copied to clipboard!');
+                  }}
+                >
+                  Copy to Clipboard
+                </button>
+              </div>
+            )}
           </form>
         </div>
       </main>
