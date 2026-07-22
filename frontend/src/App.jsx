@@ -142,9 +142,9 @@ Mobile - ${formData.contactPersonNumber || ''}`;
             </div>
 
             <div className="form-grid">
-              {(formData.caseType === 'Builder (APF / Individual)') && (
+              {(formData.caseType === 'Builder (APF / Individual)' || formData.caseType === 'Top up') && (
                 <div className="form-group">
-                  <label className="form-label">APF Number (if Builder/Individual)</label>
+                  <label className="form-label">APF Number</label>
                   <input type="text" name="apfNumber" value={formData.apfNumber} onChange={handleChange} className="form-control" placeholder="APF Number" />
                 </div>
               )}
